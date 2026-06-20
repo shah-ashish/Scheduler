@@ -7,6 +7,35 @@ import { buildSchedule } from "../lib/ai.js";
 import { todayKey, yesterdayKey, blockStatus, nowMins } from "../lib/time.js";
 import { DEFAULT_BLOCKS, QUOTES } from "../lib/constants.js";
 
+// Helper to send notifications using Service Worker (required for mobile support)
+function sendNotification(title, options) {
+  if (typeof window === "undefined" || !("Notification" in window) || Notification.permission !== "granted") return;
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.ready
+      .then((reg) => {
+        reg.showNotification(title, options).catch((err) => {
+          console.error("SW showNotification failed, falling back:", err);
+          fallbackWindowNotification(title, options);
+        });
+      })
+      .catch((err) => {
+        console.error("SW ready failed, falling back:", err);
+        fallbackWindowNotification(title, options);
+      });
+  } else {
+    fallbackWindowNotification(title, options);
+  }
+}
+
+function fallbackWindowNotification(title, options) {
+  try {
+    new Notification(title, options);
+  } catch (e) {
+    console.error("Standard Notification constructor failed:", e);
+  }
+}
+
 export function useSchedule() {
   const [ready, setReady] = useState(false);
   const [profile, setProfile] = useState(null);
@@ -133,13 +162,9 @@ export function useSchedule() {
     const permission = await Notification.requestPermission();
     setNotificationPermission(permission);
     if (permission === "granted") {
-      try {
-        new Notification("Alerts Enabled!", {
-          body: "You'll now receive alerts when your scheduled tasks start.",
-        });
-      } catch (e) {
-        console.error("Failed to show permission notification:", e);
-      }
+      sendNotification("Alerts Enabled!", {
+        body: "You'll now receive alerts when your scheduled tasks start.",
+      });
     }
   }, []);
 
@@ -155,16 +180,10 @@ export function useSchedule() {
 
     if (currentId !== lastActiveBlockId.current) {
       if (activeBlock) {
-        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-          try {
-            new Notification(`Time for: ${activeBlock.label}`, {
-              body: `${activeBlock.start} - ${activeBlock.end}${activeBlock.sub ? ` · ${activeBlock.sub}` : ""}`,
-              tag: "active-block-reminder",
-            });
-          } catch (e) {
-            console.error("Failed to show transition notification:", e);
-          }
-        }
+        sendNotification(`Time for: ${activeBlock.label}`, {
+          body: `${activeBlock.start} - ${activeBlock.end}${activeBlock.sub ? ` · ${activeBlock.sub}` : ""}`,
+          tag: "active-block-reminder",
+        });
       }
       lastActiveBlockId.current = currentId;
     }
