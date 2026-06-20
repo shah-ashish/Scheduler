@@ -7,7 +7,7 @@
 
 import express from "express";
 import cors from "cors";
-import { readFileSync } from "fs";
+import dotenv from "dotenv";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import aiRouter from "./routes/ai.js";
@@ -15,28 +15,7 @@ import aiRouter from "./routes/ai.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ─── Load .env ────────────────────────────────────────────────────────────────
-function loadEnv() {
-  try {
-    const raw = readFileSync(join(__dirname, ".env"), "utf-8");
-    let loaded = 0;
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx === -1) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
-      if (key && !(key in process.env)) {
-        process.env[key] = val;
-        loaded++;
-      }
-    }
-    console.log(`✅  Loaded .env (${loaded} vars)`);
-  } catch {
-    console.warn("⚠️  No .env file found — using process environment only.");
-  }
-}
-loadEnv();
+dotenv.config({ path: join(__dirname, ".env") });
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 const app  = express();
@@ -62,6 +41,11 @@ app.use(express.json({ limit: "1mb" }));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use("/api/ai", aiRouter);
+
+// Base route
+app.get("/", (_req, res) => {
+  res.send("Server is running!");
+});
 
 // Health check
 app.get("/api/health", (_req, res) => {
@@ -98,3 +82,5 @@ app.listen(PORT, () => {
   Then open:                       http://localhost:5173
   `);
 });
+
+export default app;

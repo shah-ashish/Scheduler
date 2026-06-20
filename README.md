@@ -1,13 +1,13 @@
-# ⚡ Focus Control
+# ⚡ Scheduler (Focus Control)
 
 > **Stop deciding. Start doing.**  
-> An AI-powered daily schedule tracker for job-seekers — built with React, Vite, Netlify Functions, and OpenRouter.
+> An AI-powered daily schedule tracker for job-seekers — built with React, Vite, Express (Node.js), and OpenRouter.
 
 ---
 
 ## 📸 What It Does
 
-Focus Control turns your rough daily plan written in plain English into a live, time-aware schedule. It generates fresh interview questions, surfaces job listings, and keeps a streak counter to keep you consistent — all in a minimal dark-mode UI optimized for mobile.
+Scheduler turns your rough daily plan written in plain English into a live, time-aware schedule. It generates fresh interview questions, surfaces job listings, and keeps a streak counter to keep you consistent — all in a minimal dark-mode UI optimized for mobile.
 
 ---
 
@@ -22,25 +22,30 @@ Focus Control turns your rough daily plan written in plain English into a live, 
 | 🔥 **Streak Counter** | Tracks consecutive days of completing at least one block |
 | ✏️ **Manual Time Editor** | Tweak block labels and start/end times without re-running AI |
 | 💾 **Offline Persistence** | All data stored in localStorage — works without a server after first load |
-| 🚦 **Rate Limiting** | Server-side per-IP limits via Upstash Redis (10/min, 100/day) |
+| 🚦 **Rate Limiting** | Server-side per-IP limits via Upstash Redis (configured in server `.env`) |
 
 ---
 
 ## 🗂 Project Structure
 
 ```
-focus-control/
+Scheduler/
 │
 ├── index.html                  ← HTML shell (mounts #root, SVG favicon)
-├── vite.config.js              ← Vite + React plugin config
-├── netlify.toml                ← Build settings + /api/* → function proxy
-├── package.json
+├── vite.config.js              ← Vite + React plugin config (proxies /api/* to Express)
+├── package.json                ← Root npm configs & workspace run scripts
+├── .env.example                ← Frontend environment variables template
 │
-├── netlify/
-│   └── functions/
-│       └── ai.js               ← Serverless AI proxy (OpenRouter + rate limit)
+├── server/                     ← Express API Server
+│   ├── .env.example            ← Backend environment variables template
+│   ├── index.js                ← Express server main entry
+│   ├── package.json            ← Backend npm dependencies & start scripts
+│   ├── middleware/
+│   │   └── rateLimit.js        ← Upstash Redis rate limiter (fallback to memory)
+│   └── routes/
+│       └── ai.js               ← Server-side AI route (OpenRouter API client)
 │
-└── src/
+└── src/                        ← Frontend React application
     ├── main.jsx                ← React root render entry point
     ├── App.jsx                 ← App shell, routing between states, modal control
     │
@@ -92,15 +97,14 @@ focus-control/
                            │  { type, payload }
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Netlify Function  (netlify/functions/ai.js)     │
+│              Express API Server  (server/index.js)          │
 │                                                             │
-│  1. Method guard (POST only)                                │
+│  1. Method guard (POST only via router)                     │
 │  2. Rate limit check  ──────────► Upstash Redis             │
-│       • 10 req / minute / IP                                │
-│       • 100 req / day   / IP                                │
+│       • Configurable req/min and req/day limit              │
 │  3. API key guard (OPENROUTER_API_KEY env var)              │
 │  4. Build prompt based on { type }                          │
-│  5. Call OpenRouter ───────────► LLM (gpt-oss-120b:free)   │
+│  5. Call OpenRouter ───────────► LLM (configurable model)   │
 │  6. Return { text } to browser                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -127,7 +131,7 @@ lib/ai.js → buildSchedule(text)
 POST /api/ai  { type: "build_schedule", payload: { text } }
         │
         ▼
-Netlify Function → OpenRouter → JSON array of blocks
+Express API Server → OpenRouter → JSON array of blocks
         │
         ▼
 Validate + sanitize block fields (type, icon, label, times)
@@ -249,7 +253,7 @@ All design tokens are CSS custom properties in [`src/styles/global.css`](./src/s
 
 ## 🤖 AI Prompt Reference
 
-The serverless function (`netlify/functions/ai.js`) sends one of three prompts:
+The Express API Server (`server/routes/ai.js`) sends one of three prompts:
 
 ### `build_schedule`
 Converts freeform text into structured JSON blocks.  
@@ -269,80 +273,94 @@ Lists 5 realistic remote frontend job opportunities.
 
 ### 1. Install dependencies
 
+Install dependencies for both frontend and backend:
 ```bash
+# Frontend
 npm install
+
+# Backend
+npm install --prefix ./server
 ```
 
-### 2. Get an OpenRouter API key
+### 2. Configure Environment Variables
 
-- Sign up at **https://openrouter.ai**
-- Go to **Keys → Create key**
-- The default model (`openai/gpt-oss-120b:free`) is free — no credits needed
-
-### 3. (Optional) Set up Upstash Redis for rate limiting
-
-- Create a free database at **https://upstash.com**
-- Copy **REST URL** and **REST Token**
-
-### 4. Create a `.env` file
-
+#### Backend Server Configuration
+Create a `.env` file in the `server` directory:
 ```env
+# server/.env
 OPENROUTER_API_KEY=sk-or-v1-your-key-here
+AI_MODEL=openai/gpt-4o-mini
+SERVER_PORT=3001
+CORS_ORIGINS=http://localhost:5173
 
-# Optional — rate limiting (skip for local dev)
-UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+# Optional: Upstash Redis Rate Limiting
+UPSTASH_REDIS_REST_URL=https://your-db.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your-token-here
+RATE_LIMIT_PER_MINUTE=10
+RATE_LIMIT_PER_DAY=100
+```
+> Note: Without Upstash, rate limiting will fall back to an in-memory handler (useful for local development).
+
+#### Frontend Configuration
+Create a `.env` file in the root directory:
+```env
+# .env
+VITE_SERVER_URL=http://localhost:3001
+VITE_API_URL=/api/ai
 ```
 
-> Without Upstash, rate limiting is silently skipped — safe for local development.
+### 3. Run locally (full stack)
 
-### 5. Run locally (full stack)
+You need to run both the frontend and backend servers.
 
+**Terminal 1: Start Backend Server**
 ```bash
-npm install -g netlify-cli
-netlify dev
+npm run server:dev
 ```
 
-This starts the Vite dev server **and** the Netlify function emulator together.
+**Terminal 2: Start Frontend UI**
+```bash
+npm run dev
+```
 
-> ⚠️ `npm run dev` alone works for the UI, but AI calls will return 404 (no function server).
+The frontend will run at `http://localhost:5173` and automatically proxy AI API calls to the backend on `http://localhost:3001`.
 
 ---
 
-## 🚀 Deploy to Netlify
+## 🚀 Deployment
+
+### Frontend (Static Site)
+The frontend can be built and deployed to any static hosting provider (e.g. Netlify, Vercel, GitHub Pages).
 
 ```bash
-netlify login
-netlify init          # link to new or existing Netlify site
-netlify deploy --prod
+npm run build
 ```
+This will compile the assets into the `dist/` directory, which can be uploaded/served statically. Ensure that your hosting environment sets the necessary frontend `.env` values or configure your proxy settings correctly.
 
-Then add environment variables in **Netlify Dashboard → Site → Environment Variables**:
+### Backend (Node.js API Server)
+The backend is a standard Express app and can be deployed to Node.js hosts (e.g. Render, Heroku, Railway, or a VPS).
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `OPENROUTER_API_KEY` | ✅ Yes | Your OpenRouter API key |
-| `UPSTASH_REDIS_REST_URL` | ⬜ Optional | Redis URL for rate limiting |
-| `UPSTASH_REDIS_REST_TOKEN` | ⬜ Optional | Redis token for rate limiting |
-
-Redeploy after adding variables.
+Ensure you set the server's environment variables in your deployment dashboard:
+- `OPENROUTER_API_KEY` (required)
+- `AI_MODEL` (defaults to `openai/gpt-4o-mini`)
+- `SERVER_PORT` (configured by hosting platform, e.g. `$PORT`)
+- `CORS_ORIGINS` (comma-separated list of your live frontend domain URLs)
+- `UPSTASH_REDIS_REST_URL` & `UPSTASH_REDIS_REST_TOKEN` (optional, for Redis rate limiting)
 
 ---
 
 ## 🔀 Changing the AI Model
 
-In [`netlify/functions/ai.js`](./netlify/functions/ai.js), change the `model` variable:
+The model is dynamically loaded from the `AI_MODEL` environment variable in the backend's configuration. To change it, update the `AI_MODEL` variable in `server/.env` (or your hosting provider's settings) to any available OpenRouter model ID:
 
-```js
-// Free models
-model = "openai/gpt-oss-120b:free";          // default (free)
-model = "google/gemma-3-27b-it:free";        // Google Gemma (free)
-model = "meta-llama/llama-3-8b-instruct:free"; // Meta Llama (free)
+```env
+# Free models
+AI_MODEL=google/gemma-3-27b-it:free
+AI_MODEL=meta-llama/llama-3-8b-instruct:free
 
-// Paid models (better quality)
-model = "openai/gpt-4o-mini";               // fast + smart
-model = "anthropic/claude-3-haiku";         // fast Claude
-model = "openai/gpt-4o";                    // best quality
+# Paid models (better quality)
+AI_MODEL=openai/gpt-4o-mini
+AI_MODEL=anthropic/claude-3.5-sonnet
 ```
 
 Browse all available models at **https://openrouter.ai/models**
@@ -353,16 +371,15 @@ Browse all available models at **https://openrouter.ai/models**
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | React 18 |
+| Frontend | React 18 |
 | Build Tool | Vite 5 |
-| Deployment | Netlify |
-| Serverless | Netlify Functions |
+| API Server | Express.js (Node.js) |
 | AI Provider | OpenRouter (any LLM) |
-| Rate Limiting | Upstash Redis |
-| Persistence | localStorage |
-| Icons | lucide-react |
+| Rate Limiting | Upstash Redis (with in-memory fallback) |
+| Persistence | LocalStorage (client side) |
+| Icons | Lucide React |
 | Fonts | Inter + Space Grotesk (Google Fonts) |
-| Styling | Vanilla CSS with custom properties |
+| Styling | Vanilla CSS |
 
 ---
 
