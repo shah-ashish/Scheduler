@@ -1,0 +1,16 @@
+{
+  "name": "focus-control-server",
+  "version": "1.0.0",
+  "description": "Express API server for Focus Control — handles all AI calls server-side.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "focus-control": "file:.."
+  }
+}

@@ -1,0 +1,11 @@
+node_modules
+dist
+
+# Environment files — never commit real secrets
+.env
+.env.local
+server/.env
+
+# .env.example files are safe to commit (no real secrets)
+!.env.example
+!server/.env.example
