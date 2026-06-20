@@ -1,6 +1,6 @@
 // src/App.jsx
 import { useState } from "react";
-import { Flame, Sparkles, Pencil, RotateCcw } from "lucide-react";
+import { Flame, Sparkles, Pencil, RotateCcw, Bell } from "lucide-react";
 import { useSchedule } from "./hooks/useSchedule.js";
 import { useDetail } from "./hooks/useDetail.js";
 import Onboarding from "./components/Onboarding.jsx";
@@ -67,6 +67,31 @@ export default function App() {
           }}>
             Hey, {schedule.profile.name}
           </h1>
+          {schedule.notificationPermission !== "granted" && (
+            <button
+              onClick={schedule.requestNotificationPermission}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                marginTop: 8,
+                fontSize: 11,
+                color: "var(--accent)",
+                fontWeight: 600,
+                background: "var(--accent-dim)",
+                border: "1px solid var(--accent-border)",
+                borderRadius: 99,
+                padding: "4px 10px",
+                fontFamily: "var(--font-display)",
+                cursor: "pointer",
+                transition: "opacity 0.15s ease",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.8")}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+            >
+              <Bell size={11} className="pulse" /> Enable Alerts
+            </button>
+          )}
         </div>
 
         {/* Streak badge */}

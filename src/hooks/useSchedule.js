@@ -1,7 +1,7 @@
 // src/hooks/useSchedule.js
 // All app state lives here. Components only read and call functions.
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { storage } from "../lib/storage.js";
 import { buildSchedule } from "../lib/ai.js";
 import { todayKey, yesterdayKey, blockStatus, nowMins } from "../lib/time.js";
@@ -121,6 +121,55 @@ export function useSchedule() {
     storage.clear();
   }, []);
 
+  // ─── Notification System ───────────────────────────────────────────────────
+  const isFirstRender = useRef(true);
+  const lastActiveBlockId = useRef(null);
+  const [notificationPermission, setNotificationPermission] = useState(
+    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "default"
+  );
+
+  const requestNotificationPermission = useCallback(async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    const permission = await Notification.requestPermission();
+    setNotificationPermission(permission);
+    if (permission === "granted") {
+      try {
+        new Notification("Alerts Enabled!", {
+          body: "You'll now receive alerts when your scheduled tasks start.",
+        });
+      } catch (e) {
+        console.error("Failed to show permission notification:", e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const currentId = activeBlock?.id || null;
+
+    if (isFirstRender.current) {
+      lastActiveBlockId.current = currentId;
+      isFirstRender.current = false;
+      return;
+    }
+
+    if (currentId !== lastActiveBlockId.current) {
+      if (activeBlock) {
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          try {
+            new Notification(`Time for: ${activeBlock.label}`, {
+              body: `${activeBlock.start} - ${activeBlock.end}${activeBlock.sub ? ` · ${activeBlock.sub}` : ""}`,
+              tag: "active-block-reminder",
+            });
+          } catch (e) {
+            console.error("Failed to show transition notification:", e);
+          }
+        }
+      }
+      lastActiveBlockId.current = currentId;
+    }
+  }, [activeBlock, ready]);
+
   return {
     ready,
     profile,
@@ -137,5 +186,7 @@ export function useSchedule() {
     quote,
     resetAll,
     tick, // expose so components re-render on clock tick
+    notificationPermission,
+    requestNotificationPermission,
   };
 }
