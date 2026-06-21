@@ -12,6 +12,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
-    "focus-control": "file:.."
+    "focus-control": "file:..",
+    "web-push": "^3.6.7"
   }
 }

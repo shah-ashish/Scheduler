@@ -46,4 +46,13 @@ export const storage = {
       return false;
     }
   },
+
+  getDeviceId() {
+    let id = this.get("deviceId");
+    if (!id) {
+      id = "dev_" + Math.random().toString(36).slice(2, 11) + "_" + Date.now().toString(36);
+      this.set("deviceId", id);
+    }
+    return id;
+  },
 };

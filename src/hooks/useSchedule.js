@@ -7,6 +7,64 @@ import { buildSchedule } from "../lib/ai.js";
 import { todayKey, yesterdayKey, blockStatus, nowMins } from "../lib/time.js";
 import { DEFAULT_BLOCKS, QUOTES } from "../lib/constants.js";
 
+// Helper to convert VAPID public key
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// Register for push notifications
+async function registerPushSubscription() {
+  try {
+    if (!("serviceWorker" in navigator)) return;
+    const reg = await navigator.serviceWorker.ready;
+
+    // 1. Fetch public VAPID key
+    const vapidKeyRes = await fetch("/api/notifications/vapid-key");
+    if (!vapidKeyRes.ok) throw new Error("Failed to fetch VAPID public key");
+    const { publicKey } = await vapidKeyRes.json();
+
+    // 2. Subscribe user
+    const subscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+
+    // 3. Send subscription to server
+    const deviceId = storage.getDeviceId();
+    const subRes = await fetch("/api/notifications/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId, subscription }),
+    });
+    if (!subRes.ok) throw new Error("Failed to save push subscription on server");
+    console.log("Successfully registered Web Push subscription on server");
+  } catch (err) {
+    console.error("Failed to register push subscription:", err);
+  }
+}
+
+// Sync blocks schedule to server
+async function syncScheduleWithServer(blocks) {
+  try {
+    const deviceId = storage.getDeviceId();
+    const res = await fetch("/api/notifications/schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId, blocks }),
+    });
+    if (!res.ok) console.warn("Schedule sync failed on server");
+  } catch (err) {
+    console.error("Failed to sync schedule with server:", err);
+  }
+}
+
 // Helper to send notifications using Service Worker (required for mobile support)
 function sendNotification(title, options) {
   if (typeof window === "undefined" || !("Notification" in window) || Notification.permission !== "granted") return;
@@ -54,12 +112,21 @@ export function useSchedule() {
 
   // Load from storage on mount
   useEffect(() => {
-    setProfile(storage.get("profile"));
-    setBlocksState(storage.get("blocks") ?? DEFAULT_BLOCKS);
-    setStreakState(storage.get("streak") ?? { count: 0, lastDate: null });
-    setPlanTextState(storage.get("planText") ?? "");
-    setDoneState(storage.get(`done:${todayKey()}`) ?? []);
+    const loadedProfile = storage.get("profile");
+    const loadedBlocks = storage.get("blocks") ?? DEFAULT_BLOCKS;
+    const loadedStreak = storage.get("streak") ?? { count: 0, lastDate: null };
+    const loadedPlan = storage.get("planText") ?? "";
+    const loadedDone = storage.get(`done:${todayKey()}`) ?? [];
+
+    setProfile(loadedProfile);
+    setBlocksState(loadedBlocks);
+    setStreakState(loadedStreak);
+    setPlanTextState(loadedPlan);
+    setDoneState(loadedDone);
     setReady(true);
+
+    // Sync blocks on initial load
+    syncScheduleWithServer(loadedBlocks);
   }, []);
 
   // Derived: sorted blocks + statuses
@@ -83,6 +150,7 @@ export function useSchedule() {
   const saveBlocks = useCallback((b) => {
     setBlocksState(b);
     storage.set("blocks", b);
+    syncScheduleWithServer(b);
   }, []);
 
   // Toggle a block done
@@ -162,11 +230,19 @@ export function useSchedule() {
     const permission = await Notification.requestPermission();
     setNotificationPermission(permission);
     if (permission === "granted") {
+      await registerPushSubscription();
       sendNotification("Alerts Enabled!", {
         body: "You'll now receive alerts when your scheduled tasks start.",
       });
     }
   }, []);
+
+  // Sync Push Subscription automatically if permission is already granted
+  useEffect(() => {
+    if (ready && notificationPermission === "granted") {
+      registerPushSubscription();
+    }
+  }, [ready, notificationPermission]);
 
   useEffect(() => {
     if (!ready) return;
